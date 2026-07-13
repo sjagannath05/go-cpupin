@@ -1,0 +1,5 @@
+# Local working harness (design docs, plans, session notes) — internal, never published
+artifacts/
+
+*.test
+.DS_Store
