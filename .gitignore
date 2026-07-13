@@ -3,3 +3,7 @@ artifacts/
 
 *.test
 .DS_Store
+
+# SDD scratch (progress ledger, briefs, reports)
+.superpowers/
+/dist/
