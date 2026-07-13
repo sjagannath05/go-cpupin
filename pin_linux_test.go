@@ -163,13 +163,9 @@ func TestSetProcessMaskSweepsPreexistingThreads(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = SetProcessMask(avail.List()...) }) // restore
 
-	close(release)
-	after := <-preborn
-	if !after.Equal(fence) {
-		t.Errorf("pre-existing thread mask = %s after sweep, want %s", after, fence)
-	}
-
-	// Threads created AFTER the sweep inherit the mask.
+	// Threads created AFTER the sweep inherit the mask. This must run BEFORE
+	// close(release): unpinDummy restores a full-width mask and returns that
+	// unfenced thread to the pool, which this goroutine could otherwise land on.
 	inherited := make(chan CPUSet, 1)
 	go func() {
 		u, err := PinSelf(avail.List()[0]) // lock a fresh thread ...
@@ -182,6 +178,12 @@ func TestSetProcessMaskSweepsPreexistingThreads(t *testing.T) {
 	}()
 	if got := <-inherited; !got.Difference(fence).IsEmpty() {
 		t.Errorf("post-sweep thread mask = %s, want subset of %s", got, fence)
+	}
+
+	close(release)
+	after := <-preborn
+	if !after.Equal(fence) {
+		t.Errorf("pre-existing thread mask = %s after sweep, want %s", after, fence)
 	}
 }
 
