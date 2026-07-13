@@ -55,13 +55,16 @@ func CheckAlignment(iface string, readerCores CPUSet) (*AlignmentReport, error) 
 		rep.Misaligned = append(rep.Misaligned,
 			fmt.Sprintf("no IRQs matched %q in /proc/interrupts (virtio/renamed driver?) — IRQ alignment unknown", iface))
 	}
+	failed := 0
 	for _, irq := range irqs {
 		aff, err := os.ReadFile(filepath.Join(procRoot, "irq", fmt.Sprint(irq), "smp_affinity_list"))
 		if err != nil {
+			failed++
 			continue
 		}
 		set, perr := ParseCPUSet(string(aff))
 		if perr != nil {
+			failed++
 			continue
 		}
 		rep.IRQAffinity[irq] = set
@@ -69,6 +72,10 @@ func CheckAlignment(iface string, readerCores CPUSet) (*AlignmentReport, error) 
 			rep.Misaligned = append(rep.Misaligned,
 				fmt.Sprintf("IRQ %d affinity %s includes cores outside reader set %s", irq, set, readerCores))
 		}
+	}
+	if failed > 0 {
+		rep.Misaligned = append(rep.Misaligned,
+			fmt.Sprintf("%d of %d matched IRQ affinities unreadable (procfs masked?) — IRQ alignment partial", failed, len(irqs)))
 	}
 	return rep, nil
 }

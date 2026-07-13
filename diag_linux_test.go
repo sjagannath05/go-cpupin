@@ -42,6 +42,26 @@ func TestCheckAlignmentReportsFindings(t *testing.T) {
 	}
 }
 
+func TestCheckAlignmentFlagsUnreadableIRQAffinity(t *testing.T) {
+	// /proc/interrupts is readable but /proc/irq/<n>/smp_affinity_list is
+	// masked → partial report with an explicit finding, NOT silence or error.
+	proc, sys := t.TempDir(), t.TempDir()
+	writeFile(t, filepath.Join(proc, "interrupts"), sampleInterrupts)
+	withRoots(t, "", proc, sys)
+
+	rep, err := CheckAlignment("eth0", NewCPUSet(0))
+	if err != nil {
+		t.Fatalf("masked /proc/irq must not error: %v", err)
+	}
+	if len(rep.IRQAffinity) != 0 {
+		t.Errorf("IRQAffinity = %v, want empty", rep.IRQAffinity)
+	}
+	joined := strings.Join(rep.Misaligned, "\n")
+	if !strings.Contains(joined, "unreadable") {
+		t.Errorf("findings must flag unreadable IRQ affinities:\n%s", joined)
+	}
+}
+
 func TestCheckAlignmentBestEffortWhenMasked(t *testing.T) {
 	// Fully masked procfs/sysfs: partial report with findings, NOT an error.
 	withRoots(t, "", t.TempDir(), t.TempDir())
