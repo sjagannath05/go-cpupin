@@ -85,9 +85,9 @@ func buildPlan(spec Spec, available CPUSet, siblings map[int][]int) (*Plan, erro
 			return nil, fmt.Errorf("cpupin: role %q: cores %s outside available set %s", r.Name, bad, available)
 		}
 		p.roles[p.index[r.Name]].cores = set
-		if r.Exclusive {
-			remaining = remaining.Difference(set)
-		}
+		// Explicitly claimed cores are spoken for: auto-allocation (exclusive,
+		// shared, and housekeeping leftovers) must not land on them.
+		remaining = remaining.Difference(set)
 	}
 
 	// 2. Exclusive threaded roles, SMT-sibling-aware.
@@ -155,7 +155,27 @@ func buildPlan(spec Spec, available CPUSet, siblings map[int][]int) (*Plan, erro
 		p.roles[p.index[p.housekeeping]].cores = remaining
 	}
 
-	// 5. SMT collision warnings across all exclusive assignments.
+	// 5. Exclusivity validation: a role marked Exclusive must not share any
+	// core with any other role (DESIGN: "cores not shared with any other
+	// role"). Overlap between two non-exclusive roles is deliberate sharing
+	// (e.g. AllowOverlap wrap) and stays allowed.
+	for i := 0; i < len(p.roles); i++ {
+		for j := i + 1; j < len(p.roles); j++ {
+			if !p.roles[i].exclusive && !p.roles[j].exclusive {
+				continue
+			}
+			if overlap := p.roles[i].cores.Intersect(p.roles[j].cores); !overlap.IsEmpty() {
+				culprit := p.roles[i].name
+				if !p.roles[i].exclusive {
+					culprit = p.roles[j].name
+				}
+				return nil, fmt.Errorf("cpupin: roles %q and %q overlap on cores %s, but %q is exclusive",
+					p.roles[i].name, p.roles[j].name, overlap, culprit)
+			}
+		}
+	}
+
+	// 6. SMT collision warnings across all exclusive assignments.
 	for _, c := range exclusiveTaken.List() {
 		for _, s := range siblings[c] {
 			if s > c && exclusiveTaken.Contains(s) {

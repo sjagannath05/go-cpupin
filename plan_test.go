@@ -180,6 +180,53 @@ func TestPlanAllowOverlap(t *testing.T) {
 	}
 }
 
+func TestPlanExclusiveExplicitOverlapErrors(t *testing.T) {
+	// Two roles explicitly claim the same cores; one is exclusive → loud error.
+	avail := NewCPUSet(0, 1, 2, 3)
+	_, err := buildPlan(Spec{Roles: []Role{
+		{Name: "a", Exclusive: true, Cores: []int{0, 1}},
+		{Name: "b", Cores: []int{0, 1}},
+	}}, avail, nil)
+	if err == nil {
+		t.Fatal("want error for overlap with exclusive role, got nil")
+	}
+	for _, frag := range []string{`"a"`, `"b"`, "exclusive"} {
+		if !strings.Contains(err.Error(), frag) {
+			t.Errorf("error %q does not mention %s", err, frag)
+		}
+	}
+}
+
+func TestPlanExclusiveAvoidsExplicitCores(t *testing.T) {
+	// Non-exclusive explicit cores must still be removed from the auto pool,
+	// or an exclusive role would silently share them.
+	avail := NewCPUSet(0, 1, 2, 3)
+	p := mustBuild(t, Spec{Roles: []Role{
+		{Name: "a", Cores: []int{0, 1}},
+		{Name: "b", Threads: 2, Exclusive: true},
+	}}, avail, nil)
+	if got := p.Cores("b"); !got.Equal(NewCPUSet(2, 3)) {
+		t.Errorf("b = %s, want 2,3 (must skip a's explicit cores 0,1)", got)
+	}
+}
+
+func TestPlanHousekeepingSkipsExplicitCores(t *testing.T) {
+	// Housekeeping leftovers must not include cores explicitly claimed by a
+	// non-exclusive role.
+	avail := NewCPUSet(0, 1, 2, 3)
+	p := mustBuild(t, Spec{Roles: []Role{
+		{Name: "gtpc", Cores: []int{2}},
+		{Name: "readers", Threads: 2, Exclusive: true},
+		{Name: "housekeeping", Housekeeping: true},
+	}}, avail, nil)
+	if got := p.Cores("readers"); !got.Equal(NewCPUSet(0, 1)) {
+		t.Errorf("readers = %s, want 0,1", got)
+	}
+	if got := p.Cores("housekeeping"); !got.Equal(NewCPUSet(3)) {
+		t.Errorf("housekeeping = %s, want 3 (not gtpc's explicit core 2)", got)
+	}
+}
+
 func TestPlanDeterminism(t *testing.T) {
 	avail := NewCPUSet(0, 2, 4, 6, 8, 10)
 	siblings := map[int][]int{0: {2}, 2: {0}}
