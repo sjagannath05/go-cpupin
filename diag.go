@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// AlignmentReport is the read-only RSS/IRQ/reader alignment snapshot
-// (DESIGN §4.5). Consumers log it at startup so "pinning is on but IRQs point
+// AlignmentReport is the read-only RSS/IRQ/reader alignment snapshot.
+// Consumers log it at startup so "pinning is on but IRQs point
 // elsewhere" is visible instead of silent.
 type AlignmentReport struct {
 	Iface       string

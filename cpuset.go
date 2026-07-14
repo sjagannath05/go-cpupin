@@ -8,8 +8,8 @@ import (
 )
 
 // CPUSet is an immutable, sorted, deduplicated set of CPU core IDs. Opaque so
-// the invariants can't be violated by construction (DESIGN §4.1;
-// k8s.io/utils/cpuset is the behavioral model). The zero value is the empty set.
+// the invariants can't be violated by construction (k8s.io/utils/cpuset is
+// the behavioral model). The zero value is the empty set.
 type CPUSet struct {
 	cores []int // sorted ascending, unique; never mutated after construction
 }

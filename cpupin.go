@@ -16,7 +16,7 @@ var ErrUnsupported = errors.New("cpupin: not supported on this platform")
 
 // Unpin restores the previous thread affinity mask and unlocks the goroutine
 // from its OS thread. Restore failures are deliberately swallowed — best-effort
-// restore, unconditional unlock (DESIGN §4.2).
+// restore, unconditional unlock.
 type Unpin func()
 
 // Supported reports whether real pinning/steering is available on this platform.

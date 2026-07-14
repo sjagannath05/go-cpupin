@@ -17,7 +17,7 @@ import (
 // to the given cores. Must be called from inside the goroutine being pinned.
 // The returned Unpin restores the previous mask and unlocks the thread.
 //
-// Kernel semantics absorbed here (DESIGN §4.2): a partially-overlapping mask
+// Kernel semantics absorbed here: a partially-overlapping mask
 // is silently narrowed by the kernel with no error, so PinSelf re-reads the
 // affinity after setting and fails if the effective mask differs from the
 // request. Never trust the setter's return code alone.
@@ -57,18 +57,18 @@ func PinSelf(cores ...int) (Unpin, error) {
 		return nil, fmt.Errorf("cpupin: PinSelf: kernel narrowed mask to %s (requested %s) — cgroup cpuset clamp", eff, req)
 	}
 	return func() {
-		_ = unix.SchedSetaffinity(0, &prev) // best-effort restore, deliberate (DESIGN §4.2)
+		_ = unix.SchedSetaffinity(0, &prev) // best-effort restore, deliberate
 		runtime.UnlockOSThread()
 	}, nil
 }
 
 // SetProcessMask applies the mask to EVERY existing thread of the process by
 // walking /proc/self/task, then relies on creator-inheritance for all future
-// threads (DESIGN §4.2). Repeats the walk until a pass finds no unseen tids,
+// threads. Repeats the walk until a pass finds no unseen tids,
 // shrinking the concurrent-thread-creation race window. ESRCH (thread exited
 // mid-walk) is ignored.
 //
-// Ordering rule (DESIGN §4.2): call before any PinSelf — the sweep cannot
+// Ordering rule: call before any PinSelf — the sweep cannot
 // distinguish datapath threads and would clobber earlier pins.
 func SetProcessMask(cores ...int) error {
 	req := NewCPUSet(cores...)

@@ -3,7 +3,7 @@
 package cpupin
 
 // Everything that would need Linux returns ErrUnsupported — nothing silently
-// pretends to pin (DESIGN §5).
+// pretends to pin.
 
 func Available() (CPUSet, error) { return CPUSet{}, ErrUnsupported }
 

@@ -22,7 +22,7 @@ type bpfInsn struct {
 	K    uint32
 }
 
-// buildSteerProgram emits the cpu→socket-index mapping program (DESIGN §4.4):
+// buildSteerProgram emits the cpu→socket-index mapping program:
 //
 //	ld  #cpu               ; A = delivering CPU (SKF_AD_CPU)
 //	jeq #core_0 → ret #0   ; one pair per reader core, socket-index order

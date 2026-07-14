@@ -41,7 +41,7 @@ type Plan struct {
 	warnings     []string
 }
 
-// buildPlan is the pure allocator (DESIGN §4.3) — no syscalls, testable
+// buildPlan is the pure allocator — no syscalls, testable
 // anywhere. siblings maps core → SMT siblings (excluding itself); may be nil.
 func buildPlan(spec Spec, available CPUSet, siblings map[int][]int) (*Plan, error) {
 	if available.IsEmpty() {
@@ -142,6 +142,11 @@ func buildPlan(spec Spec, available CPUSet, siblings map[int][]int) (*Plan, erro
 			}
 		}
 		set := NewCPUSet(take...)
+		if set.Size() < r.Threads {
+			p.warnings = append(p.warnings,
+				fmt.Sprintf("role %q wants %d threads but only %d cores are available to it — threads will share via idx%%len",
+					r.Name, r.Threads, set.Size()))
+		}
 		p.roles[p.index[r.Name]].cores = set
 		remaining = remaining.Difference(set)
 	}
@@ -156,8 +161,8 @@ func buildPlan(spec Spec, available CPUSet, siblings map[int][]int) (*Plan, erro
 	}
 
 	// 5. Exclusivity validation: a role marked Exclusive must not share any
-	// core with any other role (DESIGN: "cores not shared with any other
-	// role"). Overlap between two non-exclusive roles is deliberate sharing
+	// core with any other role. Overlap between two non-exclusive roles is
+	// deliberate sharing
 	// (e.g. AllowOverlap wrap) and stays allowed.
 	for i := 0; i < len(p.roles); i++ {
 		for j := i + 1; j < len(p.roles); j++ {
@@ -260,6 +265,9 @@ func (p *Plan) Pin(role string, idx int) (Unpin, error) {
 		return nil, fmt.Errorf("cpupin: Pin: role %q has no cores", role)
 	}
 	if r.threads > 0 {
+		if idx < 0 {
+			return nil, fmt.Errorf("cpupin: Pin: role %q: negative thread index %d", role, idx)
+		}
 		cores := r.cores.List()
 		return PinSelf(cores[idx%len(cores)])
 	}
@@ -268,7 +276,7 @@ func (p *Plan) Pin(role string, idx int) (Unpin, error) {
 
 // Apply fences housekeeping (all-thread process mask sweep) and aligns
 // GOMAXPROCS over the FULL available set — never the housekeeping subset;
-// pinned datapath threads still need Ps (DESIGN §4.3). Call early in main(),
+// pinned datapath threads still need Ps. Call early in main(),
 // strictly before any Pin().
 func (p *Plan) Apply() error {
 	if p.housekeeping != "" {
@@ -282,7 +290,7 @@ func (p *Plan) Apply() error {
 	return nil
 }
 
-// String renders a log-friendly allocation table (DESIGN §4.3).
+// String renders a log-friendly allocation table.
 func (p *Plan) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "cpupin plan (available: %s)\n", p.available)

@@ -21,8 +21,7 @@ var (
 // Boot-time affinity mask, captured at package init — before this library (or
 // anything else in-process going through it) can narrow thread masks. Available()
 // intersects the LIVE cgroup cpuset with this, never with current thread
-// affinity, so Plan.Apply()/SetProcessMask can't feed back into discovery
-// (DESIGN §4.1 "boot-mask capture").
+// affinity, so Plan.Apply()/SetProcessMask can't feed back into discovery.
 var (
 	bootMask    CPUSet
 	bootMaskErr error

@@ -1,6 +1,6 @@
 //go:build linux
 
-// Command udpecho is go-cpupin's end-to-end smoke rig (DESIGN §6): N
+// Command udpecho is go-cpupin's end-to-end smoke rig: N
 // SO_REUSEPORT sockets bound in index order, one pinned reader per socket,
 // cpu→index steering, per-socket counters. Uneven counters under multi-source
 // load = steering is not working; see also -iface for the alignment report.
@@ -65,7 +65,7 @@ func main() {
 		return soErr
 	}}
 
-	// Bind order = socket index order — load-bearing for steering (DESIGN §4.4).
+	// Bind order = socket index order — load-bearing for steering.
 	conns := make([]*net.UDPConn, *readers)
 	counts := make([]atomic.Uint64, *readers)
 	for i := range conns {

@@ -12,7 +12,7 @@ import (
 // SteerReuseport attaches the cpu→index steering program to one fd of a
 // SO_REUSEPORT group; the kernel applies it to the whole group. Packets
 // softirq'd on readerCores.List()[i] are delivered to the i-th BOUND socket —
-// consumers must bind reader sockets in index order (DESIGN §4.4).
+// consumers must bind reader sockets in index order.
 //
 // Unprivileged: SO_ATTACH_REUSEPORT_CBPF needs no capability and passes the
 // default docker seccomp profile — this is why CBPF is the primary path.
@@ -33,7 +33,7 @@ func SteerReuseport(fd uintptr, readerCores CPUSet) error {
 }
 
 // SetIncomingCPU sets SO_INCOMING_CPU as a cheaper, hint-level alternative to
-// full CBPF steering (DESIGN §4.4).
+// full CBPF steering.
 func SetIncomingCPU(fd uintptr, cpu int) error {
 	if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_INCOMING_CPU, cpu); err != nil {
 		return fmt.Errorf("cpupin: SetIncomingCPU(%d): %w", cpu, err)

@@ -11,7 +11,7 @@ import (
 
 // CheckAlignment inspects RSS queue count, IRQ affinities, and the reader core
 // set for one interface. Best-effort: masked procfs/sysfs in containers yields
-// a partial report with findings, never an error (DESIGN §4.5).
+// a partial report with findings, never an error.
 func CheckAlignment(iface string, readerCores CPUSet) (*AlignmentReport, error) {
 	rep := &AlignmentReport{
 		Iface:       iface,
@@ -37,7 +37,7 @@ func CheckAlignment(iface string, readerCores CPUSet) (*AlignmentReport, error) 
 	}
 
 	// Virtual-interface detection: physical NICs have a device/ symlink;
-	// veth/bridge/loopback don't → SKF_AD_CPU locality not guaranteed (DESIGN §4.4).
+	// veth/bridge/loopback don't → SKF_AD_CPU locality not guaranteed.
 	if _, err := os.Stat(filepath.Join(ifaceDir, "device")); err != nil && iface != "lo" {
 		rep.Misaligned = append(rep.Misaligned,
 			fmt.Sprintf("%s looks like a virtual interface (no device/ entry) — SKF_AD_CPU locality through veth/bridge is not guaranteed; verify empirically", iface))
