@@ -236,6 +236,52 @@ func (p *Plan) Cores(role string) CPUSet {
 	return CPUSet{}
 }
 
+// Build discovers the available cores and SMT topology, then allocates per
+// spec. Off-Linux this returns ErrUnsupported (via Available).
+func Build(spec Spec) (*Plan, error) {
+	avail, err := Available()
+	if err != nil {
+		return nil, err
+	}
+	return buildPlan(spec, avail, readSiblings(avail))
+}
+
+// Pin pins the calling goroutine per the plan. Threaded roles pin thread idx
+// to its own core (idx wraps: idx % len(cores)); set-pinned roles (Threads=0)
+// pin to the role's whole core set. Must be called from inside the goroutine
+// being pinned, after Apply().
+func (p *Plan) Pin(role string, idx int) (Unpin, error) {
+	i, ok := p.index[role]
+	if !ok {
+		return nil, fmt.Errorf("cpupin: Pin: unknown role %q", role)
+	}
+	r := p.roles[i]
+	if r.cores.IsEmpty() {
+		return nil, fmt.Errorf("cpupin: Pin: role %q has no cores", role)
+	}
+	if r.threads > 0 {
+		cores := r.cores.List()
+		return PinSelf(cores[idx%len(cores)])
+	}
+	return PinSelf(r.cores.List()...)
+}
+
+// Apply fences housekeeping (all-thread process mask sweep) and aligns
+// GOMAXPROCS over the FULL available set — never the housekeeping subset;
+// pinned datapath threads still need Ps (DESIGN §4.3). Call early in main(),
+// strictly before any Pin().
+func (p *Plan) Apply() error {
+	if p.housekeeping != "" {
+		if err := SetProcessMask(p.Cores(p.housekeeping).List()...); err != nil {
+			return fmt.Errorf("cpupin: Apply: housekeeping mask: %w", err)
+		}
+	}
+	if _, err := SetGOMAXPROCS(); err != nil {
+		return fmt.Errorf("cpupin: Apply: gomaxprocs: %w", err)
+	}
+	return nil
+}
+
 // String renders a log-friendly allocation table (DESIGN §4.3).
 func (p *Plan) String() string {
 	var b strings.Builder

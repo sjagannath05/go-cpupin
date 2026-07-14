@@ -3,6 +3,7 @@
 package cpupin
 
 import (
+	"runtime"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -219,5 +220,73 @@ func TestAvailableStableAfterSetProcessMask(t *testing.T) {
 	}
 	if !after.Equal(avail) {
 		t.Errorf("Available() changed after SetProcessMask: %s → %s (self-narrowing trap)", avail, after)
+	}
+}
+
+func TestBuildPinApplyEndToEnd(t *testing.T) {
+	avail, err := Available()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if avail.Size() < 2 {
+		t.Skip("needs >= 2 cores")
+	}
+	plan, err := Build(Spec{Roles: []Role{
+		{Name: "readers", Threads: 1, Exclusive: true},
+		{Name: "housekeeping", Housekeeping: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.Apply(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = SetProcessMask(avail.List()...) })
+
+	readerCore := plan.Cores("readers").List()[0]
+	done := make(chan error, 1)
+	go func() {
+		unpin, err := plan.Pin("readers", 0)
+		if err != nil {
+			done <- err
+			return
+		}
+		defer unpin()
+		if got := mustAffinity(); !got.Equal(NewCPUSet(readerCore)) {
+			done <- errAffinity(got, readerCore)
+			return
+		}
+		done <- nil
+	}()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply set GOMAXPROCS over the FULL set, not the housekeeping subset
+	// (DESIGN §4.3). With no quota cap it must equal Available().Size();
+	// with a quota cap it must still exceed the housekeeping-subset value
+	// whenever the quota allows.
+	got := runtime.GOMAXPROCS(0)
+	q, qok, qerr := QuotaCPUs()
+	if qerr != nil {
+		t.Fatal(qerr)
+	}
+	want := avail.Size()
+	if qok && int(q) < want {
+		want = int(q)
+	}
+	if want < 1 {
+		want = 1
+	}
+	if got != want {
+		t.Errorf("GOMAXPROCS = %d, want %d (full available set, never the housekeeping subset)", got, want)
+	}
+	// Available() still stable after the whole flow (boot-mask trap).
+	after, err := Available()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.Equal(avail) {
+		t.Errorf("Available() drifted: %s → %s", avail, after)
 	}
 }

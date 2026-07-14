@@ -271,3 +271,20 @@ func TestPlanCoresUnknownRole(t *testing.T) {
 		t.Errorf("Cores(unknown) = %s, want empty", got)
 	}
 }
+
+func TestPlanPinUnknownRole(t *testing.T) {
+	avail := NewCPUSet(0, 1)
+	p := mustBuild(t, Spec{Roles: []Role{{Name: "a", Threads: 1}}}, avail, nil)
+	if _, err := p.Pin("nope", 0); err == nil {
+		t.Fatal("Pin(unknown role) must error")
+	}
+}
+
+func TestBuildOffLinux(t *testing.T) {
+	if Supported() {
+		t.Skip("off-Linux contract")
+	}
+	if _, err := Build(Spec{Roles: []Role{{Name: "a", Threads: 1}}}); err == nil {
+		t.Fatal("Build must return ErrUnsupported off-Linux")
+	}
+}
