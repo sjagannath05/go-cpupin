@@ -22,6 +22,8 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -207,6 +209,7 @@ func main() {
 			}
 			fmt.Println(line)
 		case <-sig:
+			printUDPStats()
 			var total uint64
 			for i := range counts {
 				n := counts[i].Load()
@@ -217,4 +220,44 @@ func main() {
 			return
 		}
 	}
+}
+
+// printUDPStats best-effort parses the netns-wide UDP counters from
+// /proc/net/snmp (the "Udp:" header/value line pair, matched by field name,
+// not position) and prints one FINAL udpstats line. Inside a container's own
+// netns the absolute values are container-lifetime deltas, so rcvbuferrors
+// climbing is the drop-onset signal. Any read/parse problem skips the line
+// silently.
+func printUDPStats() {
+	data, err := os.ReadFile("/proc/net/snmp")
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(data), "\n")
+	var header, values []string
+	for i := 0; i+1 < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "Udp:") && strings.HasPrefix(lines[i+1], "Udp:") {
+			header = strings.Fields(lines[i])
+			values = strings.Fields(lines[i+1])
+			break
+		}
+	}
+	if header == nil || len(header) != len(values) {
+		return
+	}
+	stats := make(map[string]uint64, len(header))
+	for i := 1; i < len(header); i++ { // [0] is the "Udp:" tag
+		v, err := strconv.ParseUint(values[i], 10, 64)
+		if err != nil {
+			return
+		}
+		stats[header[i]] = v
+	}
+	for _, name := range []string{"InDatagrams", "InErrors", "RcvbufErrors", "OutDatagrams"} {
+		if _, ok := stats[name]; !ok {
+			return
+		}
+	}
+	fmt.Printf("FINAL udpstats indatagrams=%d inerrors=%d rcvbuferrors=%d outdatagrams=%d\n",
+		stats["InDatagrams"], stats["InErrors"], stats["RcvbufErrors"], stats["OutDatagrams"])
 }
