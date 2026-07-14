@@ -1,0 +1,47 @@
+# go-cpupin
+
+CPU pinning and packet-path alignment for Go on Linux: cgroup-aware core
+discovery, role-based core planning, thread pinning, SO_REUSEPORT cpu→index
+steering, and read-only RSS/IRQ alignment diagnostics.
+
+Only dependency: `golang.org/x/sys`. `CGO_ENABLED=0`. Off-Linux, everything
+returns `ErrUnsupported` (gate with `cpupin.Supported()`); the pure pieces
+(`CPUSet`, the planner) work everywhere.
+
+```
+go get github.com/sjagannath05/go-cpupin
+```
+
+## Quick start
+
+```go
+plan, err := cpupin.Build(cpupin.Spec{Roles: []cpupin.Role{
+    {Name: "readers", Threads: 4, Exclusive: true},
+    {Name: "housekeeping", Housekeeping: true},
+}})
+if err != nil { log.Fatal(err) }          // wrong plans fail loudly at startup
+if err := plan.Apply(); err != nil { ... } // all-thread mask sweep + GOMAXPROCS
+log.Print(plan)                            // printable allocation table
+
+// inside each reader goroutine, after Apply():
+unpin, err := plan.Pin("readers", idx)
+
+// after binding REUSEPORT reader sockets in index order:
+err = cpupin.SteerReuseport(fd, plan.Cores("readers"))
+```
+
+## Deployment notes
+
+- Use `docker --cpuset-cpus`, not `--cpus` — quota is invisible to affinity
+  syscalls. systemd `AllowedCPUs=`/`CPUAffinity=` are the equivalent filter.
+- `SKF_AD_CPU` locality through bridge/veth networking is "happens to work",
+  not contract — run `example/udpecho` in your deployment shape to verify.
+  Host prep (IRQ pinning, `ethtool -L`, irqbalance bans) is deliberately out
+  of scope for the library: mutating host IRQ state from inside an
+  app/container is the wrong layer.
+
+## example/udpecho
+
+End-to-end smoke rig: `go run ./example/udpecho -readers 4 -iface eth0` on a
+Linux box, then blast UDP from several source ports — per-socket counters
+should spread evenly when steering works.
