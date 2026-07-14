@@ -36,7 +36,7 @@ func TestCheckAlignmentReportsFindings(t *testing.T) {
 		t.Errorf("findings must flag IRQ 25 outside reader cores:\n%s", joined)
 	}
 	// eth0 has no device/ symlink in the fixture → virtual-iface finding
-	// (veth/bridge — SKF_AD_CPU locality not guaranteed, DESIGN §4.4).
+	// (veth/bridge — SKF_AD_CPU locality not guaranteed).
 	if !strings.Contains(joined, "virtual") {
 		t.Errorf("findings must flag virtual interface:\n%s", joined)
 	}

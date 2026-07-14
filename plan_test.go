@@ -1,6 +1,7 @@
 package cpupin
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,7 @@ func TestPlanBasicAllocation(t *testing.T) {
 }
 
 func TestPlanSparseAvailable(t *testing.T) {
-	// Never assume 0..N-1 (DESIGN §9).
+	// Never assume 0..N-1.
 	avail := NewCPUSet(1, 3, 5, 7, 9)
 	p := mustBuild(t, Spec{Roles: []Role{
 		{Name: "readers", Threads: 3, Exclusive: true},
@@ -65,7 +66,7 @@ func TestPlanExplicitOverridesWin(t *testing.T) {
 }
 
 func TestPlanExplicitHousekeepingCores(t *testing.T) {
-	// INTEGRATION.md config has housekeeping_cores — explicit override allowed.
+	// App config may pass explicit housekeeping cores — explicit override allowed.
 	avail := NewCPUSet(0, 1, 2, 3)
 	p := mustBuild(t, Spec{Roles: []Role{
 		{Name: "readers", Threads: 2, Exclusive: true},
@@ -180,6 +181,29 @@ func TestPlanAllowOverlap(t *testing.T) {
 	}
 }
 
+func TestPlanAllowOverlapShortfallWarns(t *testing.T) {
+	avail := NewCPUSet(0, 1)
+	p := mustBuild(t, Spec{AllowOverlap: true, Roles: []Role{
+		{Name: "a", Threads: 2}, // 2 cores for 2 threads → no warning
+		{Name: "b", Threads: 3}, // wrap pool only has {0,1} → 2 < 3 → warning
+	}}, avail, nil)
+	if got := p.Cores("b"); !got.Equal(NewCPUSet(0, 1)) {
+		t.Errorf("b = %s, want 0,1 (wrapped onto the whole pool)", got)
+	}
+	var found bool
+	for _, w := range p.warnings {
+		if strings.Contains(w, `"a"`) {
+			t.Errorf("role a is not short, unexpected warning: %s", w)
+		}
+		if strings.Contains(w, `"b"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("want shortfall warning mentioning role b, got %v", p.warnings)
+	}
+}
+
 func TestPlanExclusiveExplicitOverlapErrors(t *testing.T) {
 	// Two roles explicitly claim the same cores; one is exclusive → loud error.
 	avail := NewCPUSet(0, 1, 2, 3)
@@ -280,11 +304,25 @@ func TestPlanPinUnknownRole(t *testing.T) {
 	}
 }
 
+func TestPlanPinNegativeIdx(t *testing.T) {
+	// Go's % preserves sign: without the guard, idx=-1 would index cores[-1]
+	// and panic. Must be a loud error instead. Portable: the guard fires
+	// before any PinSelf syscall.
+	p := mustBuild(t, Spec{Roles: []Role{{Name: "a", Threads: 1}}}, NewCPUSet(0), nil)
+	_, err := p.Pin("a", -1)
+	if err == nil {
+		t.Fatal("Pin(role, -1) must error, not panic")
+	}
+	if !strings.Contains(err.Error(), "negative") {
+		t.Errorf("error %q does not mention the negative index", err)
+	}
+}
+
 func TestBuildOffLinux(t *testing.T) {
 	if Supported() {
 		t.Skip("off-Linux contract")
 	}
-	if _, err := Build(Spec{Roles: []Role{{Name: "a", Threads: 1}}}); err == nil {
-		t.Fatal("Build must return ErrUnsupported off-Linux")
+	if _, err := Build(Spec{Roles: []Role{{Name: "a", Threads: 1}}}); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("Build off-Linux = %v, want ErrUnsupported", err)
 	}
 }

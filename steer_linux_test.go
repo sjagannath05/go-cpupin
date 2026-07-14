@@ -87,7 +87,7 @@ func TestSteerReuseportDeliversByCPU(t *testing.T) {
 		idx, core := idx, core
 		done := make(chan error, 1)
 		go func() {
-			// Loopback: sender's CPU == delivering softirq CPU (DESIGN §6).
+			// Loopback: sender's CPU == delivering softirq CPU.
 			unpin, err := PinSelf(core)
 			if err != nil {
 				done <- err
@@ -114,7 +114,16 @@ func TestSteerReuseportDeliversByCPU(t *testing.T) {
 		}
 
 		buf := make([]byte, 16)
-		n, _, err := unix.Recvfrom(fds[idx], buf, 0)
+		// SO_RCVTIMEO reads are never auto-restarted after a signal (Go's
+		// SIGURG lands here under load) — retry on EINTR instead of flaking.
+		var n int
+		var err error
+		for {
+			n, _, err = unix.Recvfrom(fds[idx], buf, 0)
+			if err != unix.EINTR {
+				break
+			}
+		}
 		if err != nil {
 			t.Fatalf("socket %d (core %d) received nothing: %v — steering failed", idx, core, err)
 		}

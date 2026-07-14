@@ -38,7 +38,7 @@ func runSteer(t *testing.T, prog []bpfInsn, cpu uint32) uint32 {
 }
 
 func TestSteerProgramMapsCoreToIndex(t *testing.T) {
-	// Sparse cores — exactly the case where cpu%n mis-steers (DESIGN §4.4).
+	// Sparse cores — exactly the case where cpu%n mis-steers.
 	cores := []int{2, 5, 7}
 	prog := buildSteerProgram(cores)
 	for i, c := range cores {

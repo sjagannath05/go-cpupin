@@ -1,6 +1,7 @@
 package cpupin
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -31,7 +32,7 @@ func TestCheckAlignmentOffLinux(t *testing.T) {
 	if Supported() {
 		t.Skip("off-Linux contract")
 	}
-	if _, err := CheckAlignment("eth0", NewCPUSet(0)); err == nil {
-		t.Fatal("CheckAlignment must return ErrUnsupported off-Linux")
+	if _, err := CheckAlignment("eth0", NewCPUSet(0)); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("CheckAlignment off-Linux = %v, want ErrUnsupported", err)
 	}
 }

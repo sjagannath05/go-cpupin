@@ -11,7 +11,7 @@ func TestSetGOMAXPROCS(t *testing.T) {
 
 	n, err := SetGOMAXPROCS()
 	if !Supported() {
-		// Documented no-op: returns current value, nil error (DESIGN §4.1).
+		// Documented no-op: returns current value, nil error.
 		if err != nil {
 			t.Fatalf("off-Linux SetGOMAXPROCS err = %v, want nil", err)
 		}

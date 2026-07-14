@@ -9,15 +9,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func currentAffinity(t *testing.T) CPUSet {
-	t.Helper()
-	var set unix.CPUSet
-	if err := unix.SchedGetaffinity(0, &set); err != nil {
-		t.Fatal(err)
-	}
-	return cpuSetFromUnix(&set)
-}
-
 func TestPinSelfMovesAndRestores(t *testing.T) {
 	avail, err := Available()
 	if err != nil {
@@ -40,7 +31,7 @@ func TestPinSelfMovesAndRestores(t *testing.T) {
 		}
 		if got := cpuSetFromUnix(&set); !got.Equal(NewCPUSet(target)) {
 			unpin()
-			done <- errAffinity(got, target)
+			done <- errAffinity(got)
 			return
 		}
 		unpin()
@@ -61,13 +52,12 @@ func TestPinSelfMovesAndRestores(t *testing.T) {
 }
 
 type errAffinityT struct {
-	got  CPUSet
-	want int
+	got CPUSet
 }
 
 func (e errAffinityT) Error() string { return "pinned mask " + e.got.String() + " != requested" }
 
-func errAffinity(got CPUSet, want int) error { return errAffinityT{got, want} }
+func errAffinity(got CPUSet) error { return errAffinityT{got} }
 
 type errRestoreT struct{ got CPUSet }
 
@@ -112,7 +102,7 @@ func TestPinSelfSet(t *testing.T) {
 		}
 		defer unpin()
 		if got := mustAffinity(); !got.Equal(NewCPUSet(cores...)) {
-			done <- errAffinity(got, cores[0])
+			done <- errAffinity(got)
 			return
 		}
 		done <- nil
@@ -138,7 +128,7 @@ func TestSetProcessMaskSweepsPreexistingThreads(t *testing.T) {
 	if avail.Size() < 2 {
 		t.Skip("needs >= 2 cores")
 	}
-	// The whole point of the sweep (DESIGN §4.2): a thread created BEFORE
+	// The whole point of the sweep: a thread created BEFORE
 	// SetProcessMask must end up fenced too.
 	preborn := make(chan CPUSet)
 	release := make(chan struct{})
@@ -167,18 +157,24 @@ func TestSetProcessMaskSweepsPreexistingThreads(t *testing.T) {
 	// Threads created AFTER the sweep inherit the mask. This must run BEFORE
 	// close(release): unpinDummy restores a full-width mask and returns that
 	// unfenced thread to the pool, which this goroutine could otherwise land on.
-	inherited := make(chan CPUSet, 1)
+	type inheritResult struct {
+		set CPUSet
+		err error
+	}
+	inherited := make(chan inheritResult, 1)
 	go func() {
 		u, err := PinSelf(avail.List()[0]) // lock a fresh thread ...
 		if err != nil {
-			inherited <- CPUSet{}
+			inherited <- inheritResult{err: err}
 			return
 		}
 		u()
-		inherited <- mustAffinity()
+		inherited <- inheritResult{set: mustAffinity()}
 	}()
-	if got := <-inherited; !got.Difference(fence).IsEmpty() {
-		t.Errorf("post-sweep thread mask = %s, want subset of %s", got, fence)
+	if res := <-inherited; res.err != nil {
+		t.Errorf("post-sweep PinSelf failed: %v", res.err)
+	} else if !res.set.Difference(fence).IsEmpty() {
+		t.Errorf("post-sweep thread mask = %s, want subset of %s", res.set, fence)
 	}
 
 	close(release)
@@ -200,7 +196,7 @@ func TestSetProcessMaskRejectsUnavailable(t *testing.T) {
 }
 
 func TestAvailableStableAfterSetProcessMask(t *testing.T) {
-	// Boot-mask regression (DESIGN §4.1): the library's own masking must not
+	// Boot-mask regression: the library's own masking must not
 	// feed back into discovery.
 	avail, err := Available()
 	if err != nil {
@@ -231,6 +227,9 @@ func TestBuildPinApplyEndToEnd(t *testing.T) {
 	if avail.Size() < 2 {
 		t.Skip("needs >= 2 cores")
 	}
+	// Register the restore BEFORE Build/Apply: a half-completed Apply must not
+	// leak a fenced process mask into subsequent tests.
+	t.Cleanup(func() { _ = SetProcessMask(avail.List()...) })
 	plan, err := Build(Spec{Roles: []Role{
 		{Name: "readers", Threads: 1, Exclusive: true},
 		{Name: "housekeeping", Housekeeping: true},
@@ -241,7 +240,6 @@ func TestBuildPinApplyEndToEnd(t *testing.T) {
 	if err := plan.Apply(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = SetProcessMask(avail.List()...) })
 
 	readerCore := plan.Cores("readers").List()[0]
 	done := make(chan error, 1)
@@ -253,7 +251,7 @@ func TestBuildPinApplyEndToEnd(t *testing.T) {
 		}
 		defer unpin()
 		if got := mustAffinity(); !got.Equal(NewCPUSet(readerCore)) {
-			done <- errAffinity(got, readerCore)
+			done <- errAffinity(got)
 			return
 		}
 		done <- nil
@@ -262,8 +260,8 @@ func TestBuildPinApplyEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Apply set GOMAXPROCS over the FULL set, not the housekeeping subset
-	// (DESIGN §4.3). With no quota cap it must equal Available().Size();
+	// Apply set GOMAXPROCS over the FULL set, not the housekeeping subset.
+	// With no quota cap it must equal Available().Size();
 	// with a quota cap it must still exceed the housekeeping-subset value
 	// whenever the quota allows.
 	got := runtime.GOMAXPROCS(0)
