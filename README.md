@@ -41,6 +41,13 @@ err = cpupin.SteerReuseport(fd, plan.Cores("readers"))
   of scope for the library: mutating host IRQ state from inside an
   app/container is the wrong layer.
 
+## Measured results
+
+See [bench/RESULTS.md](bench/RESULTS.md): steering's CPU signal verified through
+bridge+veth networking, the ~10-20kpps crossover where pinning flips from a small
+tail tax to a categorical win (0% vs 16-19% loss at 50kpps), and per-host-class
+guidance on when to enable what.
+
 ## example/udpecho
 
 End-to-end smoke rig: `go run ./example/udpecho -readers 4 -iface eth0` on a
