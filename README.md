@@ -5,8 +5,9 @@ discovery, role-based core planning, thread pinning, SO_REUSEPORT cpu→index
 steering, and read-only RSS/IRQ alignment diagnostics.
 
 Only dependency: `golang.org/x/sys`. `CGO_ENABLED=0`. Off-Linux, everything
-returns `ErrUnsupported` (gate with `cpupin.Supported()`); the pure pieces
-(`CPUSet`, the planner) work everywhere.
+returns `ErrUnsupported` (gate with `cpupin.Supported()`); `CPUSet` and the
+planner logic are portable and fully unit-tested on any OS (the public
+`Build()` needs Linux for discovery).
 
 ```
 go get github.com/sjagannath05/go-cpupin
@@ -44,4 +45,6 @@ err = cpupin.SteerReuseport(fd, plan.Cores("readers"))
 
 End-to-end smoke rig: `go run ./example/udpecho -readers 4 -iface eth0` on a
 Linux box, then blast UDP from several source ports — per-socket counters
-should spread evenly when steering works.
+should spread evenly when steering works. Needs at least readers+1 cores
+available (4 readers ⇒ ≥5 cores, one left for housekeeping); on small boxes
+try `-readers 2`.
